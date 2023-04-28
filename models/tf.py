@@ -240,6 +240,61 @@ class TFC3x(keras.layers.Layer):
         return self.cv3(tf.concat((self.m(self.cv1(inputs)), self.cv2(inputs)), axis=3))
 
 
+class TFChannelAttention(tf.keras.layers.Layer):
+
+    def __init__(self, in_planes, ratio=16):
+        super().__init__()
+        self.avg_pool = tf.keras.layers.AdaptiveAveragePooling2D()
+        self.max_pool = tf.keras.layers.AdaptiveMaxPooling2D()
+        self.f1 = tf.keras.layers.Conv2D(in_planes // ratio, 1, use_bias=False)
+        self.relu = tf.keras.layers.ReLU()
+        self.f2 = tf.keras.layers.Conv2D(in_planes, 1, use_bias=False)
+        self.sigmoid = tf.keras.layers.Activation('sigmoid')
+
+    def call(self, x):
+        avg_out = self.f2(self.relu(self.f1(self.avg_pool(x))))
+        max_out = self.f2(self.relu(self.f1(self.max_pool(x))))
+        out = self.sigmoid(avg_out + max_out)
+        return out
+
+
+class TFSpatialAttention(tf.keras.layers.Layer):
+
+    def __init__(self, kernel_size=7):
+        super().__init__()
+        assert kernel_size in (3, 7), 'kernel size must be 3 or 7'
+        padding = 3 if kernel_size == 7 else 1
+        # (特征图的大小-算子的size+2*padding)/步长+1
+        self.conv = tf.keras.layers.Conv2D(1, kernel_size, padding=padding, use_bias=False)
+        self.sigmoid = tf.keras.layers.Activation('sigmoid')
+
+    def call(self, x):
+        # 1*h*w
+        avg_out = tf.reduce_mean(x, axis=1, keepdims=True)
+        max_out = tf.reduce_max(x, axis=1, keepdims=True)
+        x = tf.concat([avg_out, max_out], axis=1)
+        # 2*h*w
+        x = self.conv(x)
+        # 1*h*w
+        return self.sigmoid(x)
+
+
+class TFCBAM(tf.keras.layers.Layer):
+
+    def __init__(self, c1, c2, ratio=16, kernel_size=7):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        self.channel_attention = TFChannelAttention(c1, ratio)
+        self.spatial_attention = TFSpatialAttention(kernel_size)
+
+    def call(self, x):
+        out = self.channel_attention(x) * x
+        # c*h*w
+        # c*h*w * 1*h*w
+        out = self.spatial_attention(out) * out
+        return out
+
+
+
 class TFSPP(keras.layers.Layer):
     # Spatial pyramid pooling layer used in YOLOv3-SPP
     def __init__(self, c1, c2, k=(5, 9, 13), w=None):
@@ -397,12 +452,12 @@ def parse_model(d, ch, model, imgsz):  # model_dict, input_channels(3)
         n = max(round(n * gd), 1) if n > 1 else n  # depth gain
         if m in [
                 nn.Conv2d, Conv, DWConv, DWConvTranspose2d, Bottleneck, SPP, SPPF, MixConv2d, Focus, CrossConv,
-                BottleneckCSP, C3, C3x]:
+                BottleneckCSP, C3, C3x, CBAM]:
             c1, c2 = ch[f], args[0]
             c2 = make_divisible(c2 * gw, 8) if c2 != no else c2
 
             args = [c1, c2, *args[1:]]
-            if m in [BottleneckCSP, C3, C3x]:
+            if m in [BottleneckCSP, C3, C3x, CBAM]:
                 args.insert(2, n)
                 n = 1
         elif m is nn.BatchNorm2d:
