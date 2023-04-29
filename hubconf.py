@@ -78,6 +78,11 @@ def _create(name, pretrained=True, channels=3, classes=80, autoshape=True, verbo
         raise Exception(s) from e
 
 
+def yolov5s_sltm(pretrained=True, channels=3, classes=5, _verbose=True, device=None):
+    # YOLOv5-small-SLTM model https://github.com/CharinduLiyanage/yolov5-SLTM
+    return _create('yolov5s-SLTM', pretrained=pretrained, channels=channels, classes=classes, verbose=_verbose, device=device)
+
+
 def custom(path='path/to/model.pt', autoshape=True, _verbose=True, device=None):
     # YOLOv5 custom or local model
     return _create(path, autoshape=autoshape, verbose=_verbose, device=device)
