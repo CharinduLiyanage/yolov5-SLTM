@@ -78,9 +78,45 @@ def _create(name, pretrained=True, channels=3, classes=80, autoshape=True, verbo
         raise Exception(s) from e
 
 
-def yolov5s_sltm(path='path/to/model.pt', pretrained=True, channels=3, classes=5, _verbose=True, device=None):
+def _create_sltm(name, pretrained=True, channels=3, classes=5, autoshape=True, verbose=True, device=None):
+    from pathlib import Path
+
+    from models.common import AutoShape, DetectMultiBackend
+    from models.experimental import attempt_load
+    from models.yolo import DetectionModel
+    from utils.general import LOGGER, check_requirements, logging
+    from utils.torch_utils import select_device
+
+    if not verbose:
+        LOGGER.setLevel(logging.WARNING)
+    check_requirements(exclude=('opencv-python', 'tensorboard', 'thop'))
+    name = Path(name)
+    path = name.with_suffix('.pt') if name.suffix == '' and not name.is_dir() else name  # checkpoint path
+    try:
+        device = select_device(device)
+        if pretrained:
+            try:
+                model = DetectMultiBackend(path, device=device, fuse=autoshape)  # detection model
+                if autoshape:
+                    model = AutoShape(model)  # for file/URI/PIL/cv2/np inputs and NMS
+            except Exception:
+                model = attempt_load(path, device=device, fuse=False)  # arbitrary model
+        else:
+            cfg = list((Path(__file__).parent / 'models').rglob(f'{path.stem}.yaml'))[0]  # model.yaml path
+            model = DetectionModel(cfg, channels, classes)  # create model
+        if not verbose:
+            LOGGER.setLevel(logging.INFO)  # reset to default
+        return model.to(device)
+    except Exception as e:
+        help_url = 'https://docs.ultralytics.com/yolov5/tutorials/pytorch_hub_model_loading'
+        s = f'{e}. Cache may be out of date, try `force_reload=True` or see {help_url} for help.'
+        raise Exception(s) from e
+
+
+def yolov5s_sltm(path='path/to/model.pt', pretrained=True, channels=3, classes=5, autoshape=True, _verbose=True,
+                 device=None):
     # YOLOv5-small-SLTM model https://github.com/CharinduLiyanage/yolov5-SLTM
-    return _create(name=path, pretrained=pretrained, channels=channels, classes=classes, verbose=_verbose, device=device)
+    return _create_sltm(path, pretrained, channels, classes, autoshape, _verbose, device)
 
 
 def custom(path='path/to/model.pt', autoshape=True, _verbose=True, device=None):
@@ -155,6 +191,7 @@ if __name__ == '__main__':
 
     # Model
     model = _create(name=opt.model, pretrained=True, channels=3, classes=80, autoshape=True, verbose=True)
+    # model = _create_sltm(name=opt.model, pretrained=True, channels=3, classes=5, autoshape=True, verbose=True)
     # model = custom(path='path/to/model.pt')  # custom
 
     # Images
