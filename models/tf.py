@@ -271,9 +271,9 @@ class TFSpatialAttention(tf.keras.layers.Layer):
 
     def call(self, x):
         # 1*h*w
-        avg_out = tf.reduce_mean(x, axis=1, keepdims=True)
-        max_out = tf.reduce_max(x, axis=1, keepdims=True)
-        x = tf.concat([avg_out, max_out], axis=1)
+        avg_out = tf.reduce_mean(x, axis=[3], keepdims=True)
+        max_out = tf.reduce_max(x, axis=[3], keepdims=True)
+        x = tf.concat([avg_out, max_out], axis=3)
         # 2*h*w
         x = self.conv(self.pad(x))
         # 1*h*w
@@ -284,8 +284,11 @@ class TFCBAM(tf.keras.layers.Layer):
 
     def __init__(self, c1, c2, ratio=16, kernel_size=7, w=None):  # ch_in, ch_out, number, shortcut, groups, expansion
         super().__init__()
-        self.channel_attention = TFChannelAttention(c1, ratio, w.channel_attention)
-        self.spatial_attention = TFSpatialAttention(kernel_size, w.spatial_attention)
+        # if hasattr(w, 'bn')
+        self.channel_attention = TFChannelAttention(c1, ratio,
+                                                    w.channel_attention if hasattr(w, 'channel_attention') else None)
+        self.spatial_attention = TFSpatialAttention(kernel_size,
+                                                    w.spatial_attention if hasattr(w, 'spatial_attention') else None)
 
     def call(self, x):
         out = self.channel_attention(x) * x
