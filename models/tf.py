@@ -28,7 +28,7 @@ import torch.nn as nn
 from tensorflow import keras
 
 from models.common import (C3, SPP, SPPF, Bottleneck, BottleneckCSP, C3x, Concat, Conv, CrossConv, DWConv,
-                           DWConvTranspose2d, Focus, autopad)
+                           DWConvTranspose2d, Focus, autopad, CBAM)
 from models.experimental import MixConv2d, attempt_load
 from models.yolo import Detect, Segment
 from utils.activations import SiLU
@@ -242,10 +242,10 @@ class TFC3x(keras.layers.Layer):
 
 class TFChannelAttention(tf.keras.layers.Layer):
 
-    def __init__(self, in_planes, ratio=16):
+    def __init__(self, in_planes, ratio=16, w=None):
         super().__init__()
-        self.avg_pool = tf.keras.layers.AdaptiveAveragePooling2D()
-        self.max_pool = tf.keras.layers.AdaptiveMaxPooling2D()
+        self.avg_pool = tf.keras.layers.GlobalAveragePooling2D(keepdims=True)
+        self.max_pool = tf.keras.layers.GlobalMaxPooling2D(keepdims=True)
         self.f1 = tf.keras.layers.Conv2D(in_planes // ratio, 1, use_bias=False)
         self.relu = tf.keras.layers.ReLU()
         self.f2 = tf.keras.layers.Conv2D(in_planes, 1, use_bias=False)
@@ -260,12 +260,13 @@ class TFChannelAttention(tf.keras.layers.Layer):
 
 class TFSpatialAttention(tf.keras.layers.Layer):
 
-    def __init__(self, kernel_size=7):
+    def __init__(self, kernel_size=7, w=None):
         super().__init__()
         assert kernel_size in (3, 7), 'kernel size must be 3 or 7'
         padding = 3 if kernel_size == 7 else 1
         # (特征图的大小-算子的size+2*padding)/步长+1
-        self.conv = tf.keras.layers.Conv2D(1, kernel_size, padding=padding, use_bias=False)
+        self.pad = tf.keras.layers.ZeroPadding2D(padding=padding)
+        self.conv = tf.keras.layers.Conv2D(1, kernel_size, padding="valid", use_bias=False)
         self.sigmoid = tf.keras.layers.Activation('sigmoid')
 
     def call(self, x):
@@ -274,17 +275,17 @@ class TFSpatialAttention(tf.keras.layers.Layer):
         max_out = tf.reduce_max(x, axis=1, keepdims=True)
         x = tf.concat([avg_out, max_out], axis=1)
         # 2*h*w
-        x = self.conv(x)
+        x = self.conv(self.pad(x))
         # 1*h*w
         return self.sigmoid(x)
 
 
 class TFCBAM(tf.keras.layers.Layer):
 
-    def __init__(self, c1, c2, ratio=16, kernel_size=7):  # ch_in, ch_out, number, shortcut, groups, expansion
+    def __init__(self, c1, c2, ratio=16, kernel_size=7, w=None):  # ch_in, ch_out, number, shortcut, groups, expansion
         super().__init__()
-        self.channel_attention = TFChannelAttention(c1, ratio)
-        self.spatial_attention = TFSpatialAttention(kernel_size)
+        self.channel_attention = TFChannelAttention(c1, ratio, w.channel_attention)
+        self.spatial_attention = TFSpatialAttention(kernel_size, w.spatial_attention)
 
     def call(self, x):
         out = self.channel_attention(x) * x
