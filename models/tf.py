@@ -241,38 +241,41 @@ class TFC3x(keras.layers.Layer):
 
 
 class TFChannelAttention(tf.keras.layers.Layer):
-
-    def __init__(self, in_planes, ratio=16, w=None):
+    # Channel Attention Module for TFCBAM
+    def __init__(self, c1, r=16, w=None):  # ch_in, ratio
         super().__init__()
         self.avg_pool = tf.keras.layers.GlobalAveragePooling2D(keepdims=True)
         self.max_pool = tf.keras.layers.GlobalMaxPooling2D(keepdims=True)
-        self.f1 = tf.keras.layers.Conv2D(in_planes // ratio, 1, use_bias=False)
+        self.f1 = tf.keras.layers.Conv2D(c1 // r, 1, use_bias=False)
         self.relu = tf.keras.layers.ReLU()
-        self.f2 = tf.keras.layers.Conv2D(in_planes, 1, use_bias=False)
+        self.f2 = tf.keras.layers.Conv2D(c1, 1, use_bias=False)
         self.sigmoid = tf.keras.layers.Activation('sigmoid')
 
     def call(self, x):
         avg_out = self.f2(self.relu(self.f1(self.avg_pool(x))))
+        # 1*h*w
         max_out = self.f2(self.relu(self.f1(self.max_pool(x))))
+        # 1*h*w
         out = self.sigmoid(avg_out + max_out)
+        # 1*h*w
         return out
 
 
 class TFSpatialAttention(tf.keras.layers.Layer):
-
-    def __init__(self, kernel_size=7, w=None):
+    # Spacial Attention for TFCBAM module
+    def __init__(self, k=7, w=None):  # kernal
         super().__init__()
-        assert kernel_size in (3, 7), 'kernel size must be 3 or 7'
-        padding = 3 if kernel_size == 7 else 1
-        # (特征图的大小-算子的size+2*padding)/步长+1
+        assert k in (3, 7), 'kernel size must be 3 or 7'
+        padding = 3 if k == 7 else 1
         self.pad = tf.keras.layers.ZeroPadding2D(padding=padding)
-        self.conv = tf.keras.layers.Conv2D(1, kernel_size, padding="valid", use_bias=False)
+        self.conv = tf.keras.layers.Conv2D(1, k, padding="valid", use_bias=False)
         self.sigmoid = tf.keras.layers.Activation('sigmoid')
 
     def call(self, x):
-        # 1*h*w
         avg_out = tf.reduce_mean(x, axis=[3], keepdims=True)
+        # 1*h*w
         max_out = tf.reduce_max(x, axis=[3], keepdims=True)
+        # 1*h*w
         x = tf.concat([avg_out, max_out], axis=3)
         # 2*h*w
         x = self.conv(self.pad(x))
@@ -281,22 +284,23 @@ class TFSpatialAttention(tf.keras.layers.Layer):
 
 
 class TFCBAM(tf.keras.layers.Layer):
-
-    def __init__(self, c1, c2, ratio=16, kernel_size=7, w=None):  # ch_in, ch_out, number, shortcut, groups, expansion
+    # Convolutional Block Attention Module (CBAM) layer  https://arxiv.org/abs/1807.06521
+    def __init__(self, c1, c2, r=16, k=7, w=None):  # ch_in, ch_out, ratio, kernel
         super().__init__()
         # if hasattr(w, 'bn')
-        self.channel_attention = TFChannelAttention(c1, ratio,
+        self.channel_attention = TFChannelAttention(c1, r,
                                                     w.channel_attention if hasattr(w, 'channel_attention') else None)
-        self.spatial_attention = TFSpatialAttention(kernel_size,
+        self.spatial_attention = TFSpatialAttention(k,
                                                     w.spatial_attention if hasattr(w, 'spatial_attention') else None)
 
     def call(self, x):
+        # c*1*1 * c*h*w
         out = self.channel_attention(x) * x
         # c*h*w
         # c*h*w * 1*h*w
         out = self.spatial_attention(out) * out
+        # c*h*w
         return out
-
 
 
 class TFSPP(keras.layers.Layer):
