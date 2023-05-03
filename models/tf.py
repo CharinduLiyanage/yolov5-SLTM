@@ -276,11 +276,11 @@ class TFSpatialAttention(tf.keras.layers.Layer):
         # 1*h*w
         max_out = tf.reduce_max(x, axis=[3], keepdims=True)
         # 1*h*w
-        x = tf.concat([avg_out, max_out], axis=3)
+        out = tf.concat([avg_out, max_out], axis=3)
         # 2*h*w
-        x = self.conv(self.pad(x))
+        out = self.conv(self.pad(out))
         # 1*h*w
-        return self.sigmoid(x)
+        return self.sigmoid(out)
 
 
 class TFCBAM(tf.keras.layers.Layer):
