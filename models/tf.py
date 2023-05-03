@@ -246,15 +246,15 @@ class TFChannelAttention(tf.keras.layers.Layer):
         super().__init__()
         self.avg_pool = tf.keras.layers.GlobalAveragePooling2D(keepdims=True)
         self.max_pool = tf.keras.layers.GlobalMaxPooling2D(keepdims=True)
-        self.f1 = tf.keras.layers.Conv2D(c1 // r, 1, use_bias=False)
-        self.relu = tf.keras.layers.ReLU()
-        self.f2 = tf.keras.layers.Conv2D(c1, 1, use_bias=False)
+        self.cv1 = tf.keras.layers.Conv2D(c1 // r, 1, use_bias=False)
+        self.act = tf.keras.layers.ReLU()
+        self.cv2 = tf.keras.layers.Conv2D(c1, 1, use_bias=False)
         self.sigmoid = tf.keras.layers.Activation('sigmoid')
 
     def call(self, x):
-        avg_out = self.f2(self.relu(self.f1(self.avg_pool(x))))
+        avg_out = self.cv2(self.act(self.cv1(self.avg_pool(x))))
         # 1*h*w
-        max_out = self.f2(self.relu(self.f1(self.max_pool(x))))
+        max_out = self.cv2(self.act(self.cv1(self.max_pool(x))))
         # 1*h*w
         out = self.sigmoid(avg_out + max_out)
         # 1*h*w

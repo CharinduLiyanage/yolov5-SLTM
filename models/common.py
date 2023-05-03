@@ -280,15 +280,15 @@ class ChannelAttention(nn.Module):
         super().__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.max_pool = nn.AdaptiveMaxPool2d(1)
-        self.f1 = nn.Conv2d(c1, c1 // r, 1, 1, 0, bias=False)
-        self.relu = nn.ReLU()
-        self.f2 = nn.Conv2d(c1 // r, c1, 1, 1, 0, bias=False)
+        self.cv1 = nn.Conv2d(c1, c1 // r, 1, 1, 0, bias=False)
+        self.act = nn.ReLU()
+        self.cv2 = nn.Conv2d(c1 // r, c1, 1, 1, 0, bias=False)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
-        avg_out = self.f2(self.relu(self.f1(self.avg_pool(x))))
+        avg_out = self.cv2(self.act(self.cv1(self.avg_pool(x))))
         # 1*h*w
-        max_out = self.f2(self.relu(self.f1(self.max_pool(x))))
+        max_out = self.cv2(self.act(self.cv1(self.max_pool(x))))
         # 1*h*w
         out = self.sigmoid(avg_out + max_out)
         # 1*h*w
